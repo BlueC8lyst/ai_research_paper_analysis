@@ -1,65 +1,48 @@
-# !pip install semanticscholar python-dotenv requests -q
+# ============================================
+# MODULE 1: TOPIC INPUT & PAPER SEARCH (UI COMPATIBLE)
+# ============================================
 
 import json
 import os
-import textwrap
 import pandas as pd
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-
 from dotenv import load_dotenv
 from semanticscholar import SemanticScholar
 
+# 
 
 def setup_api_key() -> SemanticScholar:
     """
-    Initialize and return a SemanticScholar client.
-
-    Behavior:
-    - Attempts to load SEMANTIC_SCHOLAR_API_KEY from a .env file.
-    - If not found, does NOT write a real API key to disk (hard-coded keys removed).
-      Instead, continues without a key (limited rate) and prints clear instructions.
-    - Returns an initialized SemanticScholar client (with or without api_key).
-
-    Returns:
-        SemanticScholar: Initialized client object.
+    Initialize SemanticScholar.
+    Looks for .env in the current directory AND the parent directory.
     """
+    # 1. Try loading from current directory
     load_dotenv()
+    
+    # 2. If not found, look in parent directory (common issue in modular projects)
+    if not os.getenv("SEMANTIC_SCHOLAR_API_KEY"):
+        parent_env = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
+        load_dotenv(parent_env)
+
     api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
     if not api_key:
-        print(
-            "SEMANTIC_SCHOLAR_API_KEY not found in environment. "
-            "Proceeding without API key (limited rate)."
-        )
-        print(
-            "To use a key: create a .env file with a line like:\n"
-            "SEMANTIC_SCHOLAR_API_KEY=wFKolR3bfa5XUZaFntmdo5AXd7kL506y1klYRd3y\n"
-            "Then re-run this script."
-        )
-        scholar_client = SemanticScholar()
+        print(" [Config] No API Key found. Using limited rate (Timeout=60s).")
+        # Increase timeout to avoid 'Endpoint request timed out' errors
+        return SemanticScholar(timeout=60)
     else:
-        scholar_client = SemanticScholar(api_key=api_key)
-        print("Semantic Scholar initialized with API key.")
-
-    return scholar_client
-
+        print(" [Config] API Key loaded.")
+        return SemanticScholar(api_key=api_key, timeout=60)
 
 
 def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
     """
     Search Semantic Scholar for papers on a given topic.
-
-    Args:
-        topic (str): Topic/query string for searching papers.
-        limit (int): Maximum number of papers to request.
-
-    Returns:
-        dict or None: Dictionary containing search metadata and papers list
-                      or None if an error occurred.
     """
     if not topic or not topic.strip():
-        raise ValueError("search_papers requires a non-empty topic string.")
+        print(" [Error] Search requires a non-empty topic.")
+        return None
 
     print(f"\nSearching for papers on: '{topic}' (limit={limit})")
 
@@ -78,6 +61,7 @@ def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
 
         papers: List[Dict[str, Any]] = []
 
+        # Iterate safely through results
         for paper in results:
             raw_authors = getattr(paper, "authors", []) or []
             authors: List[str] = []
@@ -92,6 +76,7 @@ def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
             open_access_pdf = getattr(paper, "openAccessPdf", None)
             pdf_url = None
             has_pdf = False
+            
             if open_access_pdf:
                 if isinstance(open_access_pdf, dict):
                     pdf_url = open_access_pdf.get("url")
@@ -99,12 +84,17 @@ def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
                     pdf_url = getattr(open_access_pdf, "get", lambda x: None)("url")
                 has_pdf = bool(pdf_url)
 
+            # Handle abstract truncation safely
+            abstract_text = getattr(paper, "abstract", "") or ""
+            if abstract_text and len(abstract_text) > 300:
+                abstract_text = abstract_text[:300] + "..."
+
             paper_entry = {
                 "title": getattr(paper, "title", "") or "No title",
                 "authors": authors,
                 "year": getattr(paper, "year", None),
                 "paperId": getattr(paper, "paperId", None),
-                "abstract": (getattr(paper, "abstract", "") or "")[:300] + ("..." if getattr(paper, "abstract", None) and len(getattr(paper, "abstract", "")) > 300 else ""),
+                "abstract": abstract_text,
                 "citationCount": getattr(paper, "citationCount", 0),
                 "venue": getattr(paper, "venue", None),
                 "url": getattr(paper, "url", None),
@@ -132,29 +122,20 @@ def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
         return None
 
 
-
 def save_search_results(data: Dict[str, Any], filename: Optional[str] = None) -> str:
-    """
-    Save search results dict to a JSON file under data/search_results.
-
-    Args:
-        data (dict): Data returned by `search_papers`.
-        filename (str, optional): Custom filename. If None, generate from topic.
-
-    Returns:
-        str: Full path of the saved JSON file.
-    """
+    """Save search results to JSON."""
     if not data or "topic" not in data:
-        raise ValueError("save_search_results requires data dictionary with a 'topic' key.")
+        return ""
 
-    # Create a filesystem-safe filename if not provided
     if not filename:
         safe_topic = "".join(c for c in data["topic"] if c.isalnum() or c == " ").strip()
         safe_topic = safe_topic.replace(" ", "_") or "search"
         filename = f"paper_search_results_{safe_topic}.json"
 
-    os.makedirs("data/search_results", exist_ok=True)
-    filepath = os.path.join("data/search_results", filename)
+    # Use os.path.join for cross-platform compatibility
+    save_dir = os.path.join("data", "search_results")
+    os.makedirs(save_dir, exist_ok=True)
+    filepath = os.path.join(save_dir, filename)
 
     with open(filepath, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=4, ensure_ascii=False)
@@ -163,113 +144,41 @@ def save_search_results(data: Dict[str, Any], filename: Optional[str] = None) ->
     return filepath
 
 
-
-def display_search_results(data: Dict[str, Any], max_display: int = 10) -> None:
+def main_search(topic: Optional[str] = None):
     """
-    Display search results as a pandas DataFrame (table).
-
-    If running in a Jupyter / notebook environment the DataFrame will render
-    as a nice HTML table. In a plain console, the DataFrame will be printed
-    as text. Shows top `max_display` papers.
-    """
-    if not data or "papers" not in data:
-        print("No data to display.")
-        return
-
-    papers = data["papers"]
-    total = len(papers)
-    pdf_count = sum(1 for p in papers if p.get("has_pdf"))
-    no_pdf_count = total - pdf_count
-
-    print("\n" + "=" * 72)
-    print(f"SEARCH RESULTS: {data.get('topic', 'Unknown topic')}")
-    print("=" * 72)
-    print("\nStatistics:")
-    print(f"  • Total papers: {total}")
-    print(f"  • Papers with PDF: {pdf_count}")
-    print(f"  • Papers without PDF: {no_pdf_count}")
-
-    to_show = min(max_display, total)
-    if to_show == 0:
-        print("\nNo papers to display.")
-        return
-
-    # Build rows for DataFrame
-    rows = []
-    for idx, paper in enumerate(papers[:to_show], start=1):
-        title = paper.get("title", "") or ""
-        authors = paper.get("authors", []) or []
-        authors_display = ", ".join(authors)
-        year = paper.get("year", "")
-        citations = paper.get("citationCount", 0)
-        has_pdf = paper.get("has_pdf", False)
-        pdf_url = paper.get("pdf_url", "") or ""
-        url = paper.get("url", "") or ""
-        abstract = (paper.get("abstract") or "")
-        if len(abstract) > 300:
-            abstract = abstract[:297] + "..."
-
-        rows.append({
-            "#": idx,
-            "Title": title,
-            "Authors": authors_display,
-            "Year": year,
-            "Citations": citations,
-            "Has PDF": has_pdf,
-            "PDF URL": pdf_url,
-            "URL": url,
-            "Abstract": abstract
-        })
-
-    df = pd.DataFrame(rows)
-
-    col_order = ["#", "Title", "Authors", "Year", "Citations", "Has PDF", "PDF URL", "URL", "Abstract"]
-    df = df[col_order]
-
-    try:
-        from IPython.display import display as _display, HTML
-        _display(df)
-    except Exception:
-        pd.set_option("display.max_colwidth", 120)
-        print("\nTop results (DataFrame):\n")
-        print(df.to_string(index=False))
-
-    print(f"\nShowing top {to_show} of {total} papers. Use `max_display` to change the table size.")
-
-
-
-def main_search() -> (Optional[Dict[str, Any]], Optional[str]):
-    """
-    Interactive main entry for Module 1.
-
-    Returns:
-        Tuple of (results dict or None, path to saved file or None).
+    Main entry point.
+    CRITICAL FIX: Accepts 'topic' as an argument so Streamlit can pass data to it.
     """
     print("\n" + "=" * 72)
     print("MODULE 1: TOPIC INPUT & PAPER SEARCH")
     print("=" * 72)
 
-    try:
-        topic = input("\nEnter research topic: ").strip()
-    except Exception:
-        topic = ""
+    # If no topic passed (e.g. running from command line), ask for input
+    if topic is None:
+        try:
+            topic_input = input("\nEnter research topic: ").strip()
+            if topic_input:
+                topic = topic_input
+        except Exception:
+            pass
 
+    # Fallback default
     if not topic:
-        topic = "artificial intelligence"
+        topic = "machine learning"
 
+    # Execute Search
     results = search_papers(topic, limit=20)
+    
     if not results:
-        print("No results found or an error occurred during search.")
+        print(" [!] No results found.")
         return None, None
 
     save_path = save_search_results(results)
-    display_search_results(results)
-
-    print("\nModule 1 complete. Results saved to:", save_path)
-    print("Proceed to Module 2 for paper selection and PDF download.")
+    
+    # We skip the heavy pandas display here to keep the UI logs clean
+    print(f"\nModule 1 complete. Found {len(results['papers'])} papers.")
     return results, save_path
 
 
 if __name__ == "__main__":
     main_search()
-
