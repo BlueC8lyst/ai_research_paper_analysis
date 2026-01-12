@@ -1,7 +1,3 @@
-# ============================================
-# MODULE 6: DRAFT AGGREGATION & CRITIQUE (FIXED)
-# ============================================
-
 import json
 import re
 from pathlib import Path
@@ -14,7 +10,15 @@ from typing import Dict, Any, List, Optional, Tuple
 # 1. LOAD GENERATED DRAFT
 # -------------------------
 def load_latest_draft(outputs_dir: str = "outputs") -> Optional[str]:
-    """Load the most recent aggregated complete draft text."""
+    """
+    Load the most recent aggregated complete draft text.
+
+    Args:
+        outputs_dir: Path to outputs folder where complete drafts are saved.
+
+    Returns:
+        The draft text (string) or None if not found.
+    """
     out_path = Path(outputs_dir)
     if not out_path.exists():
         print("No outputs found. Run Module 5 first.")
@@ -37,7 +41,15 @@ def load_latest_draft(outputs_dir: str = "outputs") -> Optional[str]:
 
 
 def load_individual_sections(outputs_dir: str = "outputs") -> Dict[str, str]:
-    """Load the latest individual section files."""
+    """
+    Load the latest individual section files (abstract, introduction, etc.).
+
+    Args:
+        outputs_dir: Path containing individual section files.
+
+    Returns:
+        Dict mapping section keys to section content.
+    """
     out_path = Path(outputs_dir)
     if not out_path.exists():
         return {}
@@ -78,7 +90,17 @@ def create_full_draft_markdown(
     critique_feedback: Optional[Dict[str, Any]] = None,
     title: str = "Research Paper Analysis Review",
 ) -> str:
-    """Combine individual sections into a polished markdown draft."""
+    """
+    Combine individual sections into a polished markdown draft.
+
+    Args:
+        sections: Dict mapping section_key -> content
+        critique_feedback: Optional critique results to append as revision notes
+        title: Title for the markdown draft
+
+    Returns:
+        The combined markdown string.
+    """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines: List[str] = []
     lines.append(f"# {title}\n")
@@ -113,6 +135,7 @@ def create_full_draft_markdown(
         for suggestion in critique_feedback.get("suggestions", [])[:5]:
             lines.append(f"- {suggestion}")
 
+    # Add basic word count
     full_text = "\n".join(lines)
     word_count = len(re.findall(r"\b\w+\b", full_text))
     lines.append(f"\n\n*Word count: {word_count}*")
@@ -124,7 +147,12 @@ def create_full_draft_markdown(
 # 3. CRITIQUE SYSTEM
 # -------------------------
 class DraftCritique:
-    """Critique system that analyzes the draft."""
+    """
+    Critique system that analyzes the draft for clarity, flow, references, repetition,
+    academic style, and structure.
+
+    The critique methods return (passed: bool, feedback: List[str]).
+    """
 
     def __init__(self) -> None:
         self.criteria = {
@@ -137,7 +165,16 @@ class DraftCritique:
         }
 
     def critique_draft(self, draft_text: str, sections: Dict[str, str]) -> Dict[str, Any]:
-        """Run the full critique over the draft."""
+        """
+        Run the full critique over the draft.
+
+        Args:
+            draft_text: Full draft text (markdown)
+            sections: Individual sections dictionary
+
+        Returns:
+            critique_results: structured dict containing checks, suggestions, score metrics
+        """
         print("Analyzing draft quality...")
 
         total_checks = len(self.criteria)
@@ -178,7 +215,11 @@ class DraftCritique:
 
     # ---------- individual checks ----------
     def check_clarity(self, draft_text: str, sections: Dict[str, str]) -> Tuple[bool, List[str]]:
+        """
+        Check for clarity issues: long sentences and overuse of passive voice.
+        """
         issues: List[str] = []
+        # Simple sentence split
         sentences = [s.strip() for s in re.split(r"[.!?]+", draft_text) if s.strip()]
         long_sentences = [s for s in sentences if len(s.split()) > 40]
         if long_sentences:
@@ -193,6 +234,9 @@ class DraftCritique:
         return passed, issues
 
     def check_flow(self, draft_text: str, sections: Dict[str, str]) -> Tuple[bool, List[str]]:
+        """
+        Check logical flow between sections: presence of required sections and referencing.
+        """
         issues: List[str] = []
         required_order = ["abstract", "introduction", "methods", "results", "conclusion"]
         missing = [s for s in required_order if s not in sections]
@@ -209,6 +253,9 @@ class DraftCritique:
         return passed, issues
 
     def check_missing_references(self, draft_text: str, sections: Dict[str, str]) -> Tuple[bool, List[str]]:
+        """
+        Check for basic reference completeness (years, authors, count).
+        """
         issues: List[str] = []
         if "references" in sections:
             ref_text = sections["references"]
@@ -229,6 +276,9 @@ class DraftCritique:
         return passed, issues
 
     def check_repetition(self, draft_text: str, sections: Dict[str, str]) -> Tuple[bool, List[str]]:
+        """
+        Check for repetitive words/phrases and similar section openings.
+        """
         issues: List[str] = []
         words = re.findall(r"\b\w+\b", draft_text.lower())
         freq: Dict[str, int] = defaultdict(int)
@@ -255,6 +305,9 @@ class DraftCritique:
         return passed, issues
 
     def check_academic_style(self, draft_text: str, sections: Dict[str, str]) -> Tuple[bool, List[str]]:
+        """
+        Check for informal language, first-person usage, and paragraph length.
+        """
         issues: List[str] = []
         informal_words = ["really", "very", "a lot", "got", "stuff", "thing"]
         informal_count = sum(draft_text.lower().count(w) for w in informal_words)
@@ -274,6 +327,9 @@ class DraftCritique:
         return passed, issues
 
     def check_structure(self, draft_text: str, sections: Dict[str, str]) -> Tuple[bool, List[str]]:
+        """
+        Check that required sections exist and have reasonable lengths.
+        """
         issues: List[str] = []
         required = {"abstract", "introduction", "methods", "results", "conclusion", "references"}
         present = set(sections.keys())
@@ -283,8 +339,10 @@ class DraftCritique:
 
         for sec, content in sections.items():
             words = len(re.findall(r"\b\w+\b", content))
+
             if sec == "abstract" and words > 150:
                 issues.append(f"Abstract too long ({words} words; aim for <150)")
+
             if sec == "introduction" and words < 100:
                 issues.append(f"Introduction too short ({words} words; aim for 100+)")
 
@@ -300,6 +358,9 @@ class DraftCritique:
 
     # ---------- suggestion helpers ----------
     def generate_suggestion(self, criterion: str, passed: bool, feedback: List[str]) -> str:
+        """
+        Create a short actionable suggestion for a failed criterion.
+        """
         base_recs = {
             "clarity": "Use shorter sentences and prefer active voice.",
             "flow": "Add clear transitions and ensure the conclusion ties back to the introduction.",
@@ -316,6 +377,9 @@ class DraftCritique:
         return suggestion
 
     def generate_overall_suggestions(self, critique_results: Dict[str, Any]) -> List[str]:
+        """
+        Create a concise list of next-step suggestions based on failed checks.
+        """
         suggestions: List[str] = []
         failed = [name for name, c in critique_results.get("checks", {}).items() if not c.get("passed")]
         if not failed:
@@ -336,6 +400,7 @@ class DraftCritique:
         if "structure" in failed:
             suggestions.append("Ensure all sections are present and appropriately balanced by length.")
 
+        # General final tips
         suggestions.append("Read the draft aloud to catch awkward phrasing.")
         suggestions.append("Have a peer review for factual accuracy.")
         return suggestions[:7]
@@ -350,6 +415,19 @@ def run_revision_cycle(
     critique_results: Dict[str, Any],
     iteration: int = 1,
 ) -> Tuple[str, Dict[str, str]]:
+    """
+    Run a single revision cycle applying simple automated fixes based on critique.
+
+    Args:
+        draft_text: Full draft text (not strictly required for some operations)
+        sections: Individual section contents
+        critique_results: Output of DraftCritique.critique_draft
+        iteration: Current iteration number (for logging)
+
+    Returns:
+        revised_draft: New markdown draft text
+        revised_sections: Updated sections dict
+    """
     print(f"Running revision cycle {iteration}...")
     revised = dict(sections)
 
@@ -364,6 +442,20 @@ def run_revision_cycle(
 
 
 def apply_revisions(sections: Dict[str, str], criterion: str, feedback: List[str]) -> Dict[str, str]:
+    """
+    Apply rule-based revisions to sections for a specific failing criterion.
+
+    This function uses conservative edits - it avoids altering factual content,
+    instead focusing on surface-level improvements (sentence splitting, synonyms, small expansions).
+
+    Args:
+        sections: dict of section_name -> content
+        criterion: the name of the failed criterion
+        feedback: list of feedback strings from the critique
+
+    Returns:
+        revised_sections: updated sections dict
+    """
     revised = dict(sections) 
 
     if criterion == "clarity":
@@ -382,8 +474,11 @@ def apply_revisions(sections: Dict[str, str], criterion: str, feedback: List[str
 
     elif criterion == "repetition":
         replacements = {
-            "paper": "study", "research": "investigation", "analysis": "examination",
-            "method": "approach", "result": "finding"
+            "paper": "study",
+            "research": "investigation",
+            "analysis": "examination",
+            "method": "approach",
+            "result": "finding"
         }
         for name in ("abstract", "conclusion"):
             if name in revised:
@@ -397,9 +492,11 @@ def apply_revisions(sections: Dict[str, str], criterion: str, feedback: List[str
         intro = revised.get("introduction", "")
         intro_words = len(re.findall(r"\b\w+\b", intro))
         if intro and intro_words < 100:
-            addition = (" This analysis provides a more detailed examination of the methodological "
-                        "approaches and findings. The review situates the work within the broader "
-                        "research context and evaluates implications and potential improvements.")
+            addition = (
+                " This analysis provides a more detailed examination of the methodological "
+                "approaches and findings. The review situates the work within the broader "
+                "research context and evaluates implications and potential improvements."
+            )
             revised["introduction"] = (intro + " " + addition).strip()
 
     elif criterion == "missing_references":
@@ -412,6 +509,7 @@ def apply_revisions(sections: Dict[str, str], criterion: str, feedback: List[str
     elif criterion == "flow":
         if "conclusion" in revised and "introduction" in revised:
             cons = revised["conclusion"]
+            intro_title = "the introduction"
             trans = "In line with the introduction, this conclusion revisits the main aims and synthesizes the outcomes."
             if trans not in cons:
                 revised["conclusion"] = trans + "\n\n" + cons
@@ -430,6 +528,12 @@ def apply_revisions(sections: Dict[str, str], criterion: str, feedback: List[str
 # 5. SAVE OUTPUTS
 # -------------------------
 def save_critique_results(critique_results: Dict[str, Any], outputs_dir: str = "outputs", iteration: int = 1) -> str:
+    """
+    Save critique feedback JSON to outputs/critique_feedback_iteration_{n}.json
+
+    Returns:
+        Path (string) to saved JSON file
+    """
     out_path = Path(outputs_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     filename = out_path / f"critique_feedback_iteration_{iteration}.json"
@@ -444,6 +548,12 @@ def save_critique_results(critique_results: Dict[str, Any], outputs_dir: str = "
 
 
 def save_revised_draft(revised_draft: str, outputs_dir: str = "outputs", iteration: int = 1) -> str:
+    """
+    Save revised draft markdown and plain text files.
+
+    Returns:
+        Path to the primary saved markdown file (string).
+    """
     out_path = Path(outputs_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     md_file = out_path / f"revised_draft_iteration_{iteration}.md"
@@ -461,7 +571,18 @@ def save_revised_draft(revised_draft: str, outputs_dir: str = "outputs", iterati
         return ""
 
 
-def save_revision_summary(original_critique: Dict[str, Any], revised_critique: Optional[Dict[str, Any]], iterations: int, outputs_dir: str = "outputs") -> str:
+def save_revision_summary(
+    original_critique: Dict[str, Any],
+    revised_critique: Optional[Dict[str, Any]],
+    iterations: int,
+    outputs_dir: str = "outputs",
+) -> str:
+    """
+    Save a revision summary JSON that compares original and final critique scores.
+
+    Returns:
+        Path (string) to saved summary file.
+    """
     out_path = Path(outputs_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     summary = {
@@ -497,19 +618,23 @@ def save_revision_summary(original_critique: Dict[str, Any], revised_critique: O
 
 
 # -------------------------
-# 6. MAIN PIPELINE (RENAMED TO MATCH APP.PY)
+# 6. MAIN PIPELINE
 # -------------------------
-def run_refinement_cycle(iterations: int = 2) -> Optional[Dict[str, Any]]:
+def run_draft_aggregation_and_critique(max_iterations: int = 2, outputs_dir: str = "outputs") -> Optional[Dict[str, Any]]:
     """
-    Main entry point for Module 6.
-    Renamed to 'run_refinement_cycle' to match app.py.
+    Main pipeline to aggregate draft, critique, run revisions, and save results.
+
+    Args:
+        max_iterations: Number of automated revision cycles to run (conservative edits).
+        outputs_dir: Directory to read/write outputs.
+
+    Returns:
+        summary dict with initial/final critiques and file paths, or None if pipeline fails.
     """
     print("\n" + "=" * 72)
     print("DRAFT AGGREGATION & CRITIQUE MODULE")
     print("=" * 72)
 
-    outputs_dir = "outputs"
-    
     print("STEP 1: Loading generated draft...")
     draft_text = load_latest_draft(outputs_dir)
     if not draft_text:
@@ -522,6 +647,7 @@ def run_refinement_cycle(iterations: int = 2) -> Optional[Dict[str, Any]]:
     print("STEP 2: Creating full markdown draft...")
     full_draft = create_full_draft_markdown(sections)
 
+    # Save initial full draft snapshot
     out_path = Path(outputs_dir)
     out_path.mkdir(parents=True, exist_ok=True)
     initial_file = out_path / "full_draft_initial.md"
@@ -532,20 +658,23 @@ def run_refinement_cycle(iterations: int = 2) -> Optional[Dict[str, Any]]:
     except Exception as exc:
         print(f"Error saving initial draft: {exc}")
 
+    # Step 3: Run critique
     print("STEP 3: Running draft critique...")
     critic = DraftCritique()
     critique_results = critic.critique_draft(full_draft, sections)
     print(f"Critique Score: {critique_results['score']}/{critique_results['total_checks']}")
 
+    # Save initial critique
     save_critique_results(critique_results, outputs_dir, iteration=1)
 
+    # Step 4: Revision cycles
     current_sections = sections
     current_critique = critique_results
     revised_files: List[str] = []
     revised_critique: Optional[Dict[str, Any]] = None
 
-    for iteration in range(1, iterations + 1):
-        print(f"\nIteration {iteration}/{iterations}")
+    for iteration in range(1, max_iterations + 1):
+        print(f"\nIteration {iteration}/{max_iterations}")
         revised_draft, revised_sections = run_revision_cycle(full_draft, current_sections, current_critique, iteration)
         saved_path = save_revised_draft(revised_draft, outputs_dir, iteration)
         revised_files.append(saved_path)
@@ -553,19 +682,22 @@ def run_refinement_cycle(iterations: int = 2) -> Optional[Dict[str, Any]]:
         revised_critique = critic.critique_draft(revised_draft, revised_sections)
         save_critique_results(revised_critique, outputs_dir, iteration + 1)
 
+        # Prepare for next iteration
         current_sections = revised_sections
         current_critique = revised_critique
+        # update full_draft for the next revision cycle
         full_draft = revised_draft
         print(f"  Score after revision {iteration}: {revised_critique['score']}/{revised_critique['total_checks']}")
 
+    # Step 5: Create final summary
     print("\nSTEP 5: Creating revision summary...")
-    summary_file = save_revision_summary(critique_results, revised_critique, iterations, outputs_dir)
+    summary_file = save_revision_summary(critique_results, revised_critique, max_iterations, outputs_dir)
 
     print("\n" + "=" * 72)
     print("COMPLETE!")
     print("=" * 72)
 
-    return {
+    summary = {
         "initial_draft_file": str(initial_file),
         "initial_critique": critique_results,
         "revised_files": revised_files,
@@ -573,6 +705,60 @@ def run_refinement_cycle(iterations: int = 2) -> Optional[Dict[str, Any]]:
         "revision_summary_file": summary_file,
     }
 
+    # Print short overview
+    print("\nOUTPUTS GENERATED:")
+    print(f" • {initial_file.name} - Initial full draft")
+    for i, f in enumerate(revised_files, 1):
+        print(f" • revised_draft_iteration_{i}.md - Revised draft v{i}")
+    print(f" • revision_summary.json - Revision summary")
 
+    return summary
+
+
+# -------------------------
+# 7. PREVIEW FUNCTION
+# -------------------------
+def preview_critique_results(outputs_dir: str = "outputs") -> None:
+    """
+    Preview the latest critique JSON and print top suggestions.
+
+    Args:
+        outputs_dir: Directory with critique JSON files.
+    """
+    out_path = Path(outputs_dir)
+    critique_files = sorted(out_path.glob("critique_feedback_iteration_*.json"), key=lambda p: p.stat().st_mtime)
+    if not critique_files:
+        print("No critique files found")
+        return
+
+    latest = critique_files[-1]
+    try:
+        with latest.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        print("\n" + "=" * 72)
+        print("CRITIQUE RESULTS PREVIEW")
+        print("=" * 72)
+        print(f"File: {latest.name}")
+        print(f"Score: {data.get('score', 0)}/{data.get('total_checks', 0)}")
+        print("\nTop Suggestions:")
+        for i, sug in enumerate(data.get("suggestions", [])[:5], 1):
+            print(f"{i}. {sug}")
+    except Exception as exc:
+        print(f"Error reading critique file {latest.name}: {exc}")
+
+
+# -------------------------
+# 8. ENTRYPOINT
+# -------------------------
 if __name__ == "__main__":
-    run_refinement_cycle(iterations=2)
+    results = run_draft_aggregation_and_critique(max_iterations=2)
+    if results:
+        print("\nDRAFT AGGREGATION & CRITIQUE SUCCESSFUL!")
+        try:
+            preview = input("Would you like to preview critique results? (y/n): ").strip().lower()
+        except Exception:
+            preview = "n"
+        if preview and preview.startswith("y"):
+            preview_critique_results()
+    else:
+        print("Draft aggregation & critique did not run to completion.")
