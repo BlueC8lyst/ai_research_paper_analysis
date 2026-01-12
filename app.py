@@ -24,7 +24,7 @@ This agent discovers, reads, analyzes, and writes research papers for you.
 # --- SIDEBAR ---
 with st.sidebar:
     st.header("⚙️ Configuration")
-    topic = st.text_input("Research Topic", "Generative AI in Healthcare")
+    topic = st.text_input("Research Topic", "Sun")
     num_papers = st.slider("Number of Papers", 1, 10, 3)
     
     st.divider()
@@ -107,7 +107,7 @@ if st.session_state['running']:
         st.subheader("✍️ Drafting Phase")
         with st.spinner("Writing academic draft..."):
             # Call Module 5
-            draft_results = module_5.run_draft_module()
+            draft_results = module_5.run_draft_generation()
             
             if draft_results:
                 sections = draft_results['sections']
@@ -122,7 +122,7 @@ if st.session_state['running']:
         st.subheader("✅ Final Refined Output")
         
         # Call Module 6
-        final_pack = module_6.run_refinement_cycle(iterations=1)
+        final_pack = module_6.run_revision_cycle(iterations=1)
         
         # Load the final markdown file content
         outputs_dir = Path("outputs")
