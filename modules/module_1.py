@@ -1,8 +1,12 @@
-# !pip install semanticscholar python-dotenv requests -q
+# ============================================
+# MODULE 1: TOPIC INPUT & PAPER SEARCH (FIXED)
+# ============================================
+
+# !pip install semanticscholar python-dotenv requests pandas pymupdf-layout -q
 
 import json
 import os
-import textwrap
+import time
 import pandas as pd
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -12,68 +16,77 @@ from semanticscholar import SemanticScholar
 
 def setup_api_key() -> SemanticScholar:
     """
-    Initialize and return a SemanticScholar client.
-
-    Behavior:
-    - Attempts to load SEMANTIC_SCHOLAR_API_KEY from a .env file.
-    - If not found, does NOT write a real API key to disk (hard-coded keys removed).
-      Instead, continues without a key (limited rate) and prints clear instructions.
-    - Returns an initialized SemanticScholar client (with or without api_key).
-
-    Returns:
-        SemanticScholar: Initialized client object.
+    Initialize SemanticScholar with a longer timeout to prevent errors.
     """
     load_dotenv()
     api_key = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
+    # Set timeout to 60 seconds (default is usually 10)
     if not api_key:
-        print(
-            "SEMANTIC_SCHOLAR_API_KEY not found in environment. "
-            "Proceeding without API key (limited rate)."
-        )
-        print(
-            "To use a key: create a .env file with a line like:\n"
-            "SEMANTIC_SCHOLAR_API_KEY=83rBkeaXb14D8vGpXJezU6nrCFFmyn5L8RCvT9MM\n"
-            "Then re-run this script."
-        )
-        scholar_client = SemanticScholar()
+        print(" [Config] No API Key found. Using limited rate (Timeout=60s).")
+        scholar_client = SemanticScholar(timeout=60)
     else:
-        scholar_client = SemanticScholar(api_key=api_key)
-        print("Semantic Scholar initialized with API key.")
+        print(" [Config] API Key loaded. (Timeout=60s).")
+        scholar_client = SemanticScholar(api_key=api_key, timeout=60)
 
     return scholar_client
 
 
 def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
     """
-    Search Semantic Scholar for papers on a given topic.
-
-    Args:
-        topic (str): Topic/query string for searching papers.
-        limit (int): Maximum number of papers to request.
-
-    Returns:
-        dict or None: Dictionary containing search metadata and papers list
-                      or None if an error occurred.
+    Search with automatic retries for timeouts.
     """
     if not topic or not topic.strip():
         raise ValueError("search_papers requires a non-empty topic string.")
 
     print(f"\nSearching for papers on: '{topic}' (limit={limit})")
-
+    
     scholar_client = setup_api_key()
+    
+    # Retry configuration
+    max_retries = 3
+    retry_delay = 5  # seconds
 
+    results = None
+    last_error = None
+
+    # RETRY LOOP
+    for attempt in range(1, max_retries + 1):
+        try:
+            if attempt > 1:
+                print(f" ... Attempt {attempt}/{max_retries}: Retrying search...")
+            
+            results = scholar_client.search_paper(
+                query=topic,
+                limit=limit,
+                fields=[
+                    "paperId", "title", "abstract", "year", "authors",
+                    "citationCount", "openAccessPdf", "url", "venue"
+                ]
+            )
+            # If successful, break the loop
+            break
+            
+        except Exception as e:
+            last_error = e
+            error_msg = str(e).lower()
+            
+            # If it's a timeout or connection error, wait and retry
+            if "time" in error_msg or "connect" in error_msg or "500" in error_msg:
+                print(f" [!] Connection issue: {e}")
+                time.sleep(retry_delay)
+            else:
+                # If it's a logic error (like invalid query), stop immediately
+                break
+
+    # If we failed after all retries
+    if not results:
+        print(f"\n [Error] Search failed after {max_retries} attempts.")
+        print(f" Last error: {last_error}")
+        return None
+
+    # Process Results
     try:
-        # Request fields that are useful downstream
-        results = scholar_client.search_paper(
-            query=topic,
-            limit=limit,
-            fields=[
-                "paperId", "title", "abstract", "year", "authors",
-                "citationCount", "openAccessPdf", "url", "venue"
-            ]
-        )
-
         papers: List[Dict[str, Any]] = []
 
         for paper in results:
@@ -102,7 +115,7 @@ def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
                 "authors": authors,
                 "year": getattr(paper, "year", None),
                 "paperId": getattr(paper, "paperId", None),
-                "abstract": (getattr(paper, "abstract", "") or "")[:300] + ("..." if getattr(paper, "abstract", None) and len(getattr(paper, "abstract", "")) > 300 else ""),
+                "abstract": (getattr(paper, "abstract", "") or "")[:300] + "...",
                 "citationCount": getattr(paper, "citationCount", 0),
                 "venue": getattr(paper, "venue", None),
                 "url": getattr(paper, "url", None),
@@ -126,25 +139,15 @@ def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
         }
 
     except Exception as exc:
-        print(f"Error searching papers: {exc}")
+        print(f"Error processing search results: {exc}")
         return None
 
 
 def save_search_results(data: Dict[str, Any], filename: Optional[str] = None) -> str:
-    """
-    Save search results dict to a JSON file under data/search_results.
-
-    Args:
-        data (dict): Data returned by `search_papers`.
-        filename (str, optional): Custom filename. If None, generate from topic.
-
-    Returns:
-        str: Full path of the saved JSON file.
-    """
+    """Save results to JSON."""
     if not data or "topic" not in data:
-        raise ValueError("save_search_results requires data dictionary with a 'topic' key.")
+        raise ValueError("save_search_results requires data dict.")
 
-    # Create a filesystem-safe filename if not provided
     if not filename:
         safe_topic = "".join(c for c in data["topic"] if c.isalnum() or c == " ").strip()
         safe_topic = safe_topic.replace(" ", "_") or "search"
@@ -161,118 +164,51 @@ def save_search_results(data: Dict[str, Any], filename: Optional[str] = None) ->
 
 
 def display_search_results(data: Dict[str, Any], max_display: int = 10) -> None:
-    """
-    Display search results as a pandas DataFrame (table).
-
-    If running in a Jupyter / notebook environment the DataFrame will render
-    as a nice HTML table. In a plain console, the DataFrame will be printed
-    as text. Shows top `max_display` papers.
-    """
+    """Display results table."""
     if not data or "papers" not in data:
         print("No data to display.")
         return
 
     papers = data["papers"]
-    total = len(papers)
-    pdf_count = sum(1 for p in papers if p.get("has_pdf"))
-    no_pdf_count = total - pdf_count
-
-    print("\n" + "=" * 72)
-    print(f"SEARCH RESULTS: {data.get('topic', 'Unknown topic')}")
-    print("=" * 72)
-    print("\nStatistics:")
-    print(f"  • Total papers: {total}")
-    print(f"  • Papers with PDF: {pdf_count}")
-    print(f"  • Papers without PDF: {no_pdf_count}")
-
-    to_show = min(max_display, total)
-    if to_show == 0:
-        print("\nNo papers to display.")
-        return
-
-    # Build rows for DataFrame
-    rows = []
-    for idx, paper in enumerate(papers[:to_show], start=1):
-        title = paper.get("title", "") or ""
-        authors = paper.get("authors", []) or []
-        authors_display = ", ".join(authors)
-        year = paper.get("year", "")
-        citations = paper.get("citationCount", 0)
-        has_pdf = paper.get("has_pdf", False)
-        pdf_url = paper.get("pdf_url", "") or ""
-        url = paper.get("url", "") or ""
-        abstract = (paper.get("abstract") or "")
-        if len(abstract) > 300:
-            abstract = abstract[:297] + "..."
-
-        rows.append({
-            "#": idx,
-            "Title": title,
-            "Authors": authors_display,
-            "Year": year,
-            "Citations": citations,
-            "Has PDF": has_pdf,
-            "PDF URL": pdf_url,
-            "URL": url,
-            "Abstract": abstract
-        })
-
-    df = pd.DataFrame(rows)
-
-    col_order = ["#", "Title", "Authors", "Year", "Citations", "Has PDF", "PDF URL", "URL", "Abstract"]
-    df = df[col_order]
-
-    try:
-        from IPython.display import display as _display, HTML
-        _display(df)
-    except Exception:
-        pd.set_option("display.max_colwidth", 120)
-        print("\nTop results (DataFrame):\n")
-        print(df.to_string(index=False))
-
-    print(f"\nShowing top {to_show} of {total} papers. Use `max_display` to change the table size.")
+    
+    # Simple console display to avoid Pandas dependencies if needed
+    print("\n" + "=" * 60)
+    print(f" RESULTS: {data.get('topic', 'Unknown')}")
+    print("=" * 60)
+    
+    for i, p in enumerate(papers[:max_display]):
+        pdf_status = "✅ PDF" if p['has_pdf'] else "❌ No PDF"
+        print(f"{i+1}. [{pdf_status}] {p['title'][:80]}...")
+        print(f"   Year: {p['year']} | Citations: {p['citationCount']}")
+        print(f"   Authors: {', '.join(p['authors'][:2])}")
+        print("-" * 60)
 
 
 # ====================
-# 4. MAIN EXECUTION
+# MAIN EXECUTION
 # ====================
 
 def main_search(topic: Optional[str] = None):
-    """
-    Main execution flow for Module 1.
-    accepts an optional 'topic' argument for Streamlit integration.
-    """
+    """Main execution flow."""
     print("\nRESEARCH PAPER AUTOMATION TOOL")
     print("Module 1: Discovery Phase")
     
-    # 1. Input Handling
-    # If topic is not provided (running via CLI), ask for it.
     if topic is None:
         topic_input = input("\n >>> Enter research topic (default: 'machine learning'): ").strip()
         if topic_input:
             topic = topic_input
     
-    # Default fallback
     if not topic:
         topic = "machine learning"
 
-    # 2. Search
     results = search_papers(topic, limit=20)
 
-    # 3. Save & Display
     if results:
         save_path = save_search_results(results)
         display_search_results(results)
-        
-        print("\n" + "="*60)
-        print(" MODULE 1 COMPLETE")
-        print(f" Data stored in: {save_path}")
-        print(" Ready for Module 2.")
-        print("="*60)
-        
         return results, save_path
     else:
-        print("\n [!] No results found. Try a broader topic.")
+        print("\n [!] No results found (Connection timed out or 0 papers).")
         return None, None
 
 if __name__ == "__main__":
