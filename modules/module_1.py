@@ -43,6 +43,7 @@ def setup_api_key() -> SemanticScholar:
 
     return scholar_client
 
+
 def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
     """
     Search Semantic Scholar for papers on a given topic.
@@ -128,7 +129,8 @@ def search_papers(topic: str, limit: int = 20) -> Optional[Dict[str, Any]]:
         print(f"Error searching papers: {exc}")
         return None
 
-  def save_search_results(data: Dict[str, Any], filename: Optional[str] = None) -> str:
+
+def save_search_results(data: Dict[str, Any], filename: Optional[str] = None) -> str:
     """
     Save search results dict to a JSON file under data/search_results.
 
