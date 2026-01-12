@@ -122,7 +122,7 @@ if st.session_state['running']:
         st.subheader("✅ Final Refined Output")
         
         # Call Module 6
-        final_pack = module_6.run_revision_cycle(iterations=1)
+        final_pack = module_6.run_draft_aggregation_and_critique(iterations=1)
         
         # Load the final markdown file content
         outputs_dir = Path("outputs")
