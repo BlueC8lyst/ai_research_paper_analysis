@@ -233,37 +233,47 @@ def display_search_results(data: Dict[str, Any], max_display: int = 10) -> None:
     print(f"\nShowing top {to_show} of {total} papers. Use `max_display` to change the table size.")
 
 
-def main_search() -> (Optional[Dict[str, Any]], Optional[str]):
+# ====================
+# 4. MAIN EXECUTION
+# ====================
+
+def main_search(topic: Optional[str] = None):
     """
-    Interactive main entry for Module 1.
-
-    Returns:
-        Tuple of (results dict or None, path to saved file or None).
+    Main execution flow for Module 1.
+    accepts an optional 'topic' argument for Streamlit integration.
     """
-    print("\n" + "=" * 72)
-    print("MODULE 1: TOPIC INPUT & PAPER SEARCH")
-    print("=" * 72)
-
-    try:
-        topic = input("\nEnter research topic: ").strip()
-    except Exception:
-        topic = ""
-
+    print("\nRESEARCH PAPER AUTOMATION TOOL")
+    print("Module 1: Discovery Phase")
+    
+    # 1. Input Handling
+    # If topic is not provided (running via CLI), ask for it.
+    if topic is None:
+        topic_input = input("\n >>> Enter research topic (default: 'machine learning'): ").strip()
+        if topic_input:
+            topic = topic_input
+    
+    # Default fallback
     if not topic:
-        topic = "artificial intelligence"
+        topic = "machine learning"
 
+    # 2. Search
     results = search_papers(topic, limit=20)
-    if not results:
-        print("No results found or an error occurred during search.")
+
+    # 3. Save & Display
+    if results:
+        save_path = save_search_results(results)
+        display_search_results(results)
+        
+        print("\n" + "="*60)
+        print(" MODULE 1 COMPLETE")
+        print(f" Data stored in: {save_path}")
+        print(" Ready for Module 2.")
+        print("="*60)
+        
+        return results, save_path
+    else:
+        print("\n [!] No results found. Try a broader topic.")
         return None, None
-
-    save_path = save_search_results(results)
-    display_search_results(results)
-
-    print("\nModule 1 complete. Results saved to:", save_path)
-    print("Proceed to Module 2 for paper selection and PDF download.")
-    return results, save_path
-
 
 if __name__ == "__main__":
     main_search()
